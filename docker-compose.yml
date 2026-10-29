@@ -1,0 +1,14 @@
+# Local database for development: `docker compose up -d`
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_USER: findam
+      POSTGRES_PASSWORD: findam
+      POSTGRES_DB: findam
+    ports:
+      - "5432:5432"
+    volumes:
+      - findam-db:/var/lib/postgresql/data
+volumes:
+  findam-db:
