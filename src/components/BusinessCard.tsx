@@ -40,6 +40,7 @@ export function BusinessCard({ b, travel }: { b: SearchResult; travel?: string |
           </p>
           <p className="text-[13px] text-muted">
             {[
+              b.verification_level === "none" ? "Unverified" : null,
               b.category,
               b.rating ? `${b.rating} from ${b.review_count} real customer${b.review_count === 1 ? "" : "s"}` : null,
               priceRange(b.price_min_ngn, b.price_max_ngn),

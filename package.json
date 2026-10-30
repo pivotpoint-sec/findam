@@ -13,7 +13,8 @@
     "db:seed:base": "tsx scripts/seed.ts --base-only",
     "job:trust": "tsx scripts/recompute-trust.ts",
     "job:weekly-ping": "tsx scripts/weekly-ping.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "import:osm": "tsx scripts/import-osm.ts"
   },
   "engines": {
     "node": ">=20"

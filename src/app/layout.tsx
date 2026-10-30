@@ -40,10 +40,20 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </div>
         </header>
 
-        <main className="mx-auto max-w-3xl px-4 pb-28 pt-5 sm:pb-12">{children}</main>
+        <main className="mx-auto max-w-3xl px-4 pb-8 pt-5 sm:pb-12">{children}</main>
 
-        <footer className="mx-auto hidden max-w-3xl px-4 pb-10 text-sm text-muted sm:block">
-          FindAm · Lagos · <Link href="/add" className="underline">List your business free</Link>
+        <footer className="mx-auto flex max-w-3xl flex-col gap-1 px-4 pb-28 text-[13px] text-muted sm:pb-10">
+          <p>
+            FindAm · Lagos · <Link href="/add" className="underline">List your business free</Link> ·{" "}
+            <Link href="/privacy" className="underline">Privacy</Link>
+          </p>
+          <p>
+            Some listings use data from{" "}
+            <a href="https://www.openstreetmap.org/copyright" className="underline" target="_blank" rel="noopener">
+              © OpenStreetMap contributors
+            </a>
+            .
+          </p>
         </footer>
 
         {/* Bottom navigation on phones */}

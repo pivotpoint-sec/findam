@@ -58,7 +58,7 @@ bookings, other cities, native apps.
 
 ```
 src/
-  app/                 pages and API routes
+  app/                 pages and API routes (incl. admin/claims, privacy)
     page.tsx           home
     search/            search results
     b/[slug]/          listing page, review and report forms
@@ -75,6 +75,7 @@ src/
     create-business.ts one place that creates listings (web, bot, agent)
     whatsapp/bot.ts    the bot conversation
     whatsapp/client.ts sending messages and downloading photos
+    osm-import.ts      OpenStreetMap tag mapping and import
     storage.ts         photo storage (local disk in v1)
     travel.ts          optional driving times from OSRM
   components/          shared UI
@@ -82,7 +83,7 @@ src/
 db/migrations/         schema, trust score function
 db/seed/base.sql       Lagos areas, categories with Pidgin synonyms, markets
 db/seed/demo.sql       sample listings for development only
-scripts/               migrate, seed and the two jobs
+scripts/               migrate, seed, import-osm and the two jobs
 tests/                 format helpers and full bot conversations
 ```
 
@@ -158,6 +159,52 @@ and set `WHATSAPP_APP_SECRET` (the webhook refuses unsigned requests in producti
    "Send Hi on WhatsApp".
 
 Without `WHATSAPP_TOKEN` the bot runs in dev mode: replies are logged, not sent.
+
+## Import businesses from OpenStreetMap
+
+Pre-fill FindAm with Lagos businesses already mapped on OpenStreetMap. They
+go live as **Unverified** listings with a "Is this your business? Claim it
+free" button, rank below verified listings, and are hidden after 90 days if
+nobody claims or confirms them.
+
+```bash
+npm run db:migrate                       # adds the import and claim tables
+npm run import:osm -- --dry-run          # see what would be imported
+npm run import:osm                       # import
+npm run import:osm -- --save osm.json    # also keep the raw download
+npm run import:osm -- --file osm.json    # re-import from a saved download
+```
+
+Run it from your own computer or server: it downloads from the public
+Overpass API (`OVERPASS_URL` to use another server). Running it again
+refreshes unclaimed imported listings and adds new ones; it never touches
+listings an owner has claimed or asked to remove, and skips businesses
+FindAm already has (same name within 150 m). Tag-to-category rules are in
+`src/lib/osm-import.ts`.
+
+**Licence.** OpenStreetMap data is © OpenStreetMap contributors under the Open
+Database Licence (ODbL). Commercial use is allowed; FindAm credits OSM in the
+footer, on imported listings and on `/privacy`. If you ever share or sell the
+imported data itself, it must stay under the ODbL.
+
+**Claims.**
+- Owner taps "Claim it on WhatsApp" → the bot gets `CLAIM <listing>`. If the
+  message comes from the number on the listing, it links instantly (WhatsApp
+  has proved they control the number). Otherwise it goes to `/admin/claims`.
+- Owner without WhatsApp → web claim form → `/admin/claims`.
+- An owner who simply says "Hi" from the listing's number is linked too.
+- In `/admin/claims`, call the claimer and check something only the owner would
+  know before approving.
+
+**Removal requests.** "Own this business? Ask us to remove it" on every listing
+goes to the top of `/admin/reports`. Call to confirm, then "Confirmed: remove
+listing" sets it to `removed`, so later imports never bring it back.
+
+**Rules to keep.** Never message imported numbers first on WhatsApp: Meta
+requires the person's opt-in, and bulk messages to scraped numbers can get the
+bot's number banned. Don't import from other directories or Google Maps; their
+terms forbid it. Fill in `PRIVACY_CONTACT_EMAIL` for the `/privacy` notice and
+have a Nigerian data protection lawyer review it before a large import.
 
 ## How the main rules work
 

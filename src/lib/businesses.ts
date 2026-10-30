@@ -35,6 +35,10 @@ export type BusinessDetail = {
   verification_level: "none" | "phone" | "visited" | "cac";
   last_confirmed_at: string | null;
   status: string;
+  source: "web" | "bot" | "agent" | "import";
+  source_name: string | null;
+  imported_at: string | null;
+  claimed: boolean;
   rating: number | null;
   review_count: number;
 };
@@ -52,6 +56,7 @@ export async function getBusinessBySlug(slug: string): Promise<BusinessDetail | 
                       WHERE a2.id = ANY (b.service_area_ids)), '{}') AS service_areas,
             b.hours_note, b.is_open_now, b.open_status_note, b.open_status_at,
             b.verification_level, b.last_confirmed_at, b.status,
+            b.source, b.source_name, b.imported_at, b.owner_id IS NOT NULL AS claimed,
             (SELECT round(avg(rating)::numeric, 1)::float FROM reviews r
               WHERE r.business_id = b.id AND r.status = 'live') AS rating,
             (SELECT count(*)::int FROM reviews r

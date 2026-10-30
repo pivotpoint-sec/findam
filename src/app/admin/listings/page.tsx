@@ -3,10 +3,10 @@ import { query } from "@/lib/db";
 import { ago } from "@/lib/format";
 import { markVisited, setListingStatus } from "../actions";
 
-type Props = { searchParams: Promise<{ q?: string; status?: string; saved?: string }> };
+type Props = { searchParams: Promise<{ q?: string; status?: string; source?: string; saved?: string }> };
 
 export default async function ListingsPage({ searchParams }: Props) {
-  const { q = "", status = "", saved } = await searchParams;
+  const { q = "", status = "", source = "", saved } = await searchParams;
   const rows = await query<{
     id: string; slug: string; name: string; area: string | null; category: string | null; status: string;
     verification_level: string; trust_score: number; last_confirmed_at: string | null; source: string;
@@ -18,8 +18,9 @@ export default async function ListingsPage({ searchParams }: Props) {
      LEFT JOIN categories c ON c.id = b.category_id
      WHERE ($1 = '' OR b.search_text ILIKE '%' || lower($1) || '%' OR b.whatsapp LIKE '%' || $1 || '%')
        AND ($2 = '' OR b.status = $2)
+       AND ($3 = '' OR b.source = $3)
      ORDER BY b.created_at DESC LIMIT 200`,
-    [q.trim(), status],
+    [q.trim(), status, source],
   );
 
   return (
@@ -30,7 +31,13 @@ export default async function ListingsPage({ searchParams }: Props) {
         <input name="q" defaultValue={q} placeholder="Name, area, category or number" className="field min-h-11 flex-1" />
         <select name="status" defaultValue={status} className="field min-h-11 w-auto">
           <option value="">Any status</option>
-          {["live", "pending", "hidden", "closed", "rejected"].map((s) => (
+          {["live", "pending", "hidden", "closed", "rejected", "removed"].map((s) => (
+            <option key={s} value={s}>{s}</option>
+          ))}
+        </select>
+        <select name="source" defaultValue={source} className="field min-h-11 w-auto">
+          <option value="">Any source</option>
+          {["web", "bot", "agent", "import"].map((s) => (
             <option key={s} value={s}>{s}</option>
           ))}
         </select>

@@ -94,7 +94,13 @@ async function claimByNumber(phone: string): Promise<Owned | null> {
      RETURNING id`,
     [phone],
   );
-  await query("UPDATE businesses SET owner_id = $1 WHERE id = $2", [u!.id, b.id]);
+  // The person is messaging from the listing's own number, so it's theirs.
+  await query(
+    `UPDATE businesses SET owner_id = $1, whatsapp = coalesce(whatsapp, $3),
+       verification_level = CASE WHEN verification_level = 'none' THEN 'phone' ELSE verification_level END
+     WHERE id = $2`,
+    [u!.id, b.id, phone],
+  );
   return { id: b.id, name: b.name, slug: b.slug, status: b.status };
 }
 
@@ -195,6 +201,12 @@ export async function handleIncoming(msg: Incoming): Promise<Outgoing[]> {
   if (state !== "idle" && (first === "cancel" || first === "stop")) {
     await setSession(msg.from, "idle", {});
     return [text("OK, stopped. Nothing was saved. Send HI any time to start again.")];
+  }
+
+  // A claim from a listing's button works whatever the chat was doing before.
+  if (state !== "idle" && first === "claim") {
+    await setSession(msg.from, "idle", {});
+    return idle(msg, word, first);
   }
 
   switch (state) {
@@ -375,7 +387,80 @@ export async function handleIncoming(msg: Incoming): Promise<Outgoing[]> {
   }
 }
 
+/**
+ * "CLAIM <slug>", sent from the claim button on an unclaimed listing.
+ * If this WhatsApp number is the one on the listing, link it straight away:
+ * WhatsApp has already proved the person controls that number. Otherwise the
+ * team calls them to check, so nobody can take over someone else's listing.
+ */
+async function claim(msg: Incoming, slugText: string): Promise<Outgoing[]> {
+  const slug = slugText.toLowerCase().replace(/^.*\/b\//, "").replace(/[^a-z0-9-]/g, "");
+  if (!slug) return [text("Tap \"Claim it on WhatsApp\" on your FindAm listing, or send CLAIM followed by your listing link.")];
+
+  const b = await queryOne<{
+    id: string; name: string; slug: string; status: string; whatsapp: string | null; phone: string | null; owner_phone: string | null;
+  }>(
+    `SELECT b.id, b.name, b.slug, b.status, b.whatsapp, b.phone, u.phone AS owner_phone
+     FROM businesses b LEFT JOIN users u ON u.id = b.owner_id WHERE b.slug = $1`,
+    [slug],
+  );
+  if (!b || ["removed", "rejected"].includes(b.status)) {
+    return [text("We couldn't find that listing. Check the link, or send HI to list your business.")];
+  }
+  if (b.owner_phone === msg.from) {
+    return [text(`${b.name} is already linked to this number. Reply MENU to see what you can do.`)];
+  }
+  if (b.owner_phone) {
+    await query(
+      `INSERT INTO claim_requests (business_id, phone, channel, note) VALUES ($1, $2, 'bot', 'Listing already claimed by another number')
+       ON CONFLICT (business_id, phone) WHERE status = 'pending' DO NOTHING`,
+      [b.id, msg.from],
+    );
+    return [text(`${b.name} has already been claimed by another number. If that's wrong, we'll call you on this number to sort it out.`)];
+  }
+
+  if (b.whatsapp === msg.from || b.phone === msg.from) {
+    const u = await queryOne<{ id: string }>(
+      `INSERT INTO users (phone, role) VALUES ($1, 'owner')
+       ON CONFLICT (phone) DO UPDATE SET role = CASE WHEN users.role = 'user' THEN 'owner' ELSE users.role END
+       RETURNING id`,
+      [msg.from],
+    );
+    await query(
+      `UPDATE businesses SET owner_id = $2,
+         whatsapp = coalesce(whatsapp, $3),
+         verification_level = CASE WHEN verification_level = 'none' THEN 'phone' ELSE verification_level END,
+         last_confirmed_at = now(),
+         status = CASE WHEN status = 'hidden' THEN 'live' ELSE status END
+       WHERE id = $1`,
+      [b.id, u!.id, msg.from],
+    );
+    await query("INSERT INTO verifications (business_id, method) VALUES ($1, 'phone')", [b.id]);
+    return [
+      text(
+        `Done. ${b.name} is now yours on FindAm: ${link(b.slug)}\n\n` +
+          "Customers can now chat you on this number. To complete your listing, reply MOVED to add your location " +
+          "pin and landmark directions.\n\nReply OPEN or CLOSE to show your status, STATS for views, or MENU for more.",
+      ),
+    ];
+  }
+
+  await query(
+    `INSERT INTO claim_requests (business_id, phone, channel) VALUES ($1, $2, 'bot')
+     ON CONFLICT (business_id, phone) WHERE status = 'pending' DO NOTHING`,
+    [b.id, msg.from],
+  );
+  return [
+    text(
+      `Thanks. The number on ${b.name}'s listing is different from this one, so a FindAm team member will call ` +
+        "you on this number within 2 days to confirm, then link the listing to you.",
+    ),
+  ];
+}
+
 async function idle(msg: Incoming, word: string, first: string): Promise<Outgoing[]> {
+  if (first === "claim") return claim(msg, (msg.text ?? "").trim().split(/\s+/).slice(1).join(" "));
+
   let owned = await ownedBusinesses(msg.from);
   const claimed = owned.length === 0 ? await claimByNumber(msg.from) : null;
   if (claimed) owned = [claimed];
@@ -386,7 +471,7 @@ async function idle(msg: Incoming, word: string, first: string): Promise<Outgoin
   }
 
   const intro: Outgoing[] = claimed
-    ? [text(`We found ${claimed.name} on FindAm, listed by one of our agents. It's now linked to this WhatsApp number.`)]
+    ? [text(`We found ${claimed.name} on FindAm with this number. It's now linked to you, free.`)]
     : [];
   const names = owned.map((b) => b.name).join(", ");
   const ids = owned.map((b) => b.id);

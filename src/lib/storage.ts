@@ -13,7 +13,8 @@ const TYPES: Record<string, string> = {
 };
 
 export function uploadDir() {
-  return resolve(process.env.UPLOAD_DIR || "./uploads");
+  // The folder is chosen at runtime; tell the bundler not to trace the whole project for it.
+  return resolve(/* turbopackIgnore: true */ process.env.UPLOAD_DIR || "./uploads");
 }
 
 export async function savePhoto(data: Buffer | ArrayBuffer, mime: string): Promise<string> {
