@@ -1,8 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-// Protects /admin with HTTP basic auth. Runs on the edge, so it decodes the
-// header itself rather than importing Node's crypto.
-export function middleware(req: NextRequest) {
+// Protects /admin with HTTP basic auth (Next.js 16 "proxy", formerly middleware).
+export function proxy(req: NextRequest) {
   const user = process.env.ADMIN_USER;
   const pass = process.env.ADMIN_PASSWORD;
   const header = req.headers.get("authorization");

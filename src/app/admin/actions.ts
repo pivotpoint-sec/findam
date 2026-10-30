@@ -7,7 +7,7 @@ import { query } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
 import { normalisePhone } from "@/lib/format";
 
-// Every action re-checks the admin login: middleware guards the pages, but
+// Every action re-checks the admin login: src/proxy.ts guards the pages, but
 // server actions are plain POSTs and must not rely on that alone.
 
 const id = z.uuid();

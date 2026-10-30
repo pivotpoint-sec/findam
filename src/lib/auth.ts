@@ -2,7 +2,7 @@ import { headers } from "next/headers";
 import { timingSafeEqual } from "node:crypto";
 
 // v1 admin access is HTTP basic auth (ADMIN_USER / ADMIN_PASSWORD), enforced
-// on /admin by src/middleware.ts and re-checked inside every admin action.
+// on /admin by src/proxy.ts and re-checked inside every admin action.
 // Replace with per-agent logins (phone + OTP) before onboarding a large team.
 
 export function checkBasicAuth(header: string | null): boolean {

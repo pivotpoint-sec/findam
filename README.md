@@ -78,7 +78,7 @@ src/
     storage.ts         photo storage (local disk in v1)
     travel.ts          optional driving times from OSRM
   components/          shared UI
-  middleware.ts        password protection for /admin
+  proxy.ts             password protection for /admin
 db/migrations/         schema, trust score function
 db/seed/base.sql       Lagos areas, categories with Pidgin synonyms, markets
 db/seed/demo.sql       sample listings for development only
