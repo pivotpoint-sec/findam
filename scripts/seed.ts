@@ -4,10 +4,11 @@ import "dotenv/config";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Client } from "pg";
+import { databaseUrl } from "../src/lib/db-url";
 
 async function main() {
   const baseOnly = process.argv.includes("--base-only");
-  const client = new Client({ connectionString: process.env.DATABASE_URL });
+  const client = new Client({ connectionString: databaseUrl() });
   await client.connect();
   const dir = join(process.cwd(), "db", "seed");
 
