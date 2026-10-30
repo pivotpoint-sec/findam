@@ -93,12 +93,15 @@ export async function createBusiness(b: NewBusiness, mode: CreateMode) {
   }
 }
 
-/** Is there already a live or pending listing on this WhatsApp number? */
+/**
+ * A live or pending listing whose WhatsApp or phone number is this one,
+ * preferring unclaimed listings (e.g. made by an agent or imported).
+ */
 export async function findByWhatsapp(phone: string) {
   return queryOne<{ id: string; name: string; slug: string; owner_id: string | null; status: string }>(
     `SELECT id, name, slug, owner_id, status FROM businesses
-     WHERE whatsapp = $1 AND status IN ('live','hidden','pending')
-     ORDER BY created_at LIMIT 1`,
+     WHERE (whatsapp = $1 OR phone = $1) AND status IN ('live','hidden','pending')
+     ORDER BY owner_id IS NOT NULL, created_at LIMIT 1`,
     [phone],
   );
 }

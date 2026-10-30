@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { query, queryOne } from "@/lib/db";
 import { readVisitorId } from "@/lib/visitor";
+import { normalisePhone } from "@/lib/format";
 
 export type FormState = { ok?: boolean; error?: string };
 
@@ -59,5 +60,50 @@ export async function submitReport(_: FormState, form: FormData): Promise<FormSt
     reason,
     note || null,
   ]);
+  return { ok: true };
+}
+
+const ownerSchema = z.object({
+  businessId: z.uuid(),
+  name: z.string().trim().max(60).optional(),
+  phone: z.string().trim().min(1, "Add your phone number"),
+  note: z.string().trim().max(500).optional(),
+});
+
+/**
+ * "This is my business, take it down." Goes to the admin reports queue. The
+ * team calls the number to confirm before removing, so nobody can take down
+ * a competitor's listing.
+ */
+export async function requestRemoval(_: FormState, form: FormData): Promise<FormState> {
+  const parsed = ownerSchema.safeParse(Object.fromEntries(form));
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check the form" };
+  const phone = normalisePhone(parsed.data.phone);
+  if (!phone) return { error: "That doesn't look like a Nigerian phone number" };
+  await query(
+    "INSERT INTO reports (business_id, reason, note, contact_phone) VALUES ($1, 'owner_removal', $2, $3)",
+    [parsed.data.businessId, [parsed.data.name, parsed.data.note].filter(Boolean).join(" · ") || null, phone],
+  );
+  return { ok: true };
+}
+
+/**
+ * Claim from the website, for owners who'd rather not use WhatsApp. A web form
+ * can't prove the person owns the number, so these always go to the team to
+ * check by phone. (Claims on WhatsApp from the listed number link instantly.)
+ */
+export async function requestClaim(_: FormState, form: FormData): Promise<FormState> {
+  const parsed = ownerSchema.safeParse(Object.fromEntries(form));
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check the form" };
+  const phone = normalisePhone(parsed.data.phone);
+  if (!phone) return { error: "That doesn't look like a Nigerian phone number" };
+  const b = await queryOne<{ owner_id: string | null }>("SELECT owner_id FROM businesses WHERE id = $1", [parsed.data.businessId]);
+  if (!b) return { error: "Listing not found" };
+  if (b.owner_id) return { error: "This listing has already been claimed. If that's wrong, use Report a problem." };
+  await query(
+    `INSERT INTO claim_requests (business_id, phone, name, note, channel) VALUES ($1, $2, $3, $4, 'web')
+     ON CONFLICT (business_id, phone) WHERE status = 'pending' DO NOTHING`,
+    [parsed.data.businessId, phone, parsed.data.name || null, parsed.data.note || null],
+  );
   return { ok: true };
 }

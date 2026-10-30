@@ -6,6 +6,7 @@ export const metadata = { title: "Admin", robots: { index: false } };
 const NAV = [
   { href: "/admin", label: "Overview" },
   { href: "/admin/pending", label: "New listings" },
+  { href: "/admin/claims", label: "Claims" },
   { href: "/admin/reports", label: "Reports" },
   { href: "/admin/stale", label: "To revisit" },
   { href: "/admin/listings", label: "All listings" },

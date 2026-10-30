@@ -30,7 +30,7 @@ export async function rejectListing(form: FormData) {
 
 export async function setListingStatus(form: FormData) {
   await requireAdmin();
-  const status = z.enum(["live", "hidden", "closed"]).parse(form.get("status"));
+  const status = z.enum(["live", "hidden", "closed", "removed"]).parse(form.get("status"));
   await query("UPDATE businesses SET status = $2 WHERE id = $1", [id.parse(form.get("id")), status]);
   revalidatePath("/admin", "layout");
 }
@@ -53,10 +53,55 @@ export async function markVisited(form: FormData) {
   revalidatePath("/admin", "layout");
 }
 
+/** The team called the claimer and confirmed they own the business. */
+export async function approveClaim(form: FormData) {
+  await requireAdmin();
+  const cid = id.parse(form.get("id"));
+  const c = (await query<{ business_id: string; phone: string; name: string | null }>(
+    "SELECT business_id, phone, name FROM claim_requests WHERE id = $1 AND status = 'pending'",
+    [cid],
+  ))[0];
+  if (!c) return;
+  const u = (await query<{ id: string }>(
+    `INSERT INTO users (phone, role, name) VALUES ($1, 'owner', $2)
+     ON CONFLICT (phone) DO UPDATE SET role = CASE WHEN users.role = 'user' THEN 'owner' ELSE users.role END,
+       name = coalesce(users.name, EXCLUDED.name)
+     RETURNING id`,
+    [c.phone, c.name],
+  ))[0];
+  await query(
+    `UPDATE businesses SET owner_id = $2, whatsapp = $3,
+       verification_level = CASE WHEN verification_level = 'none' THEN 'phone' ELSE verification_level END,
+       last_confirmed_at = now(), status = CASE WHEN status = 'hidden' THEN 'live' ELSE status END
+     WHERE id = $1`,
+    [c.business_id, u.id, c.phone],
+  );
+  await query("INSERT INTO verifications (business_id, method, evidence) VALUES ($1, 'phone', $2)", [
+    c.business_id,
+    JSON.stringify({ claim_request: cid, note: String(form.get("note") ?? "") || null }),
+  ]);
+  // Approving one claim settles any other open claims on the same listing.
+  await query(
+    `UPDATE claim_requests SET status = CASE WHEN id = $1 THEN 'approved' ELSE 'rejected' END, decided_at = now()
+     WHERE business_id = $2 AND status = 'pending'`,
+    [cid, c.business_id],
+  );
+  await query("SELECT recompute_trust()");
+  revalidatePath("/admin", "layout");
+}
+
+export async function rejectClaim(form: FormData) {
+  await requireAdmin();
+  await query("UPDATE claim_requests SET status = 'rejected', decided_at = now() WHERE id = $1 AND status = 'pending'", [
+    id.parse(form.get("id")),
+  ]);
+  revalidatePath("/admin", "layout");
+}
+
 export async function resolveReport(form: FormData) {
   await requireAdmin();
   const rid = id.parse(form.get("id"));
-  const outcome = z.enum(["dismiss", "close", "hide"]).parse(form.get("outcome"));
+  const outcome = z.enum(["dismiss", "close", "hide", "remove"]).parse(form.get("outcome"));
   const rows = await query<{ business_id: string }>(
     "UPDATE reports SET resolved = TRUE WHERE id = $1 RETURNING business_id",
     [rid],
@@ -64,6 +109,12 @@ export async function resolveReport(form: FormData) {
   const bid = rows[0]?.business_id;
   if (bid && outcome === "close") await query("UPDATE businesses SET status = 'closed' WHERE id = $1", [bid]);
   if (bid && outcome === "hide") await query("UPDATE businesses SET status = 'hidden' WHERE id = $1", [bid]);
+  // Owner asked for removal and the team confirmed it's them. 'removed' keeps
+  // the row so a later import never adds the business back.
+  if (bid && outcome === "remove") {
+    await query("UPDATE businesses SET status = 'removed' WHERE id = $1", [bid]);
+    await query("UPDATE reports SET resolved = TRUE WHERE business_id = $1", [bid]);
+  }
   await query("SELECT recompute_trust()");
   revalidatePath("/admin", "layout");
 }

@@ -1,0 +1,22 @@
+{
+  "elements": [
+    { "type": "node", "id": 9000000001, "lat": 6.6012, "lon": 3.3509,
+      "tags": { "shop": "mobile_phone", "name": "Test OSM Phone Hub", "phone": "+234 809 999 0501", "addr:street": "Allen Avenue", "addr:housenumber": "12", "opening_hours": "Mo-Sa 08:00-19:00" } },
+    { "type": "way", "id": 9000000002, "center": { "lat": 6.5101, "lon": 3.3720 },
+      "tags": { "amenity": "restaurant", "name": "Test OSM Amala Spot", "cuisine": "nigerian", "contact:whatsapp": "0809 999 0502" } },
+    { "type": "node", "id": 9000000003, "lat": 6.4975, "lon": 3.3545,
+      "tags": { "shop": "hairdresser", "hairdresser": "barber", "name": "Test OSM Fresh Cuts" } },
+    { "type": "node", "id": 9000000004, "lat": 6.5050, "lon": 3.3600,
+      "tags": { "shop": "hairdresser" } },
+    { "type": "node", "id": 9000000005, "lat": 6.5000, "lon": 3.3600,
+      "tags": { "amenity": "bank", "name": "Test OSM Bank" } },
+    { "type": "node", "id": 9000000006, "lat": 6.5950, "lon": 3.9800,
+      "tags": { "craft": "tailor", "name": "Test OSM Far Away Tailor" } },
+    { "type": "node", "id": 9000000007, "lat": 6.59585, "lon": 3.34285,
+      "tags": { "shop": "mobile_phone", "name": "Chidi Phone Clinic" } },
+    { "type": "node", "id": 9000000008, "lat": 6.5200, "lon": 3.3700,
+      "tags": { "shop": "tailor", "name": "Test OSM Closed Tailor", "disused": "yes" } },
+    { "type": "node", "id": 9000000009, "lat": 6.6020, "lon": 3.3520,
+      "tags": { "craft": "plumber", "name": "Test OSM Pipe Masters", "phone": "08099990509; 01 234 5678" } }
+  ]
+}

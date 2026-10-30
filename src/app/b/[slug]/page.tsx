@@ -4,11 +4,13 @@ import type { Metadata } from "next";
 import { getBusinessBySlug, getPhotos, getReviews, recordView } from "@/lib/businesses";
 import { queryOne } from "@/lib/db";
 import { readVisitorId } from "@/lib/visitor";
-import { ago, displayPhone, naira, priceRange } from "@/lib/format";
+import { ago, displayPhone, naira, priceRange, whatsappLink } from "@/lib/format";
 import { Icon, VerifiedTick } from "@/components/Icon";
 import { Confirmed, OpenStatus, verificationLabel } from "@/components/Status";
 import { DistanceFromYou } from "@/components/DistanceFromYou";
 import { ReportForm, ReviewForm } from "./Forms";
+import { ClaimCard, RemoveForm } from "./OwnerForms";
+import { OSM_SOURCE } from "@/lib/osm-import";
 
 export const dynamic = "force-dynamic";
 
@@ -48,6 +50,11 @@ export default async function ListingPage({ params }: Props) {
   const work = photos.slice(1);
   const verification = verificationLabel(b.verification_level);
   const strongVerified = b.verification_level === "visited" || b.verification_level === "cac";
+  const unverified = b.verification_level === "none";
+  const fromOsm = b.source === "import" && b.source_name === OSM_SOURCE;
+  // Claim on WhatsApp: opens a chat with the FindAm bot, "CLAIM <slug>" typed in.
+  const botNumber = process.env.WHATSAPP_DISPLAY_NUMBER;
+  const claimHref = botNumber ? whatsappLink(botNumber, `CLAIM ${b.slug}`) : null;
   const marketCells = b.market
     ? [
         { k: "Market", v: b.market },
@@ -96,11 +103,31 @@ export default async function ListingPage({ params }: Props) {
                 {verification}
               </span>
             )}
-            <span className="flex flex-wrap gap-x-2 rounded-[10px] bg-sun-soft px-2.5 py-1.5">
-              <OpenStatus {...b} />
-              <span className="font-normal"><Confirmed at={b.last_confirmed_at} /></span>
-            </span>
+            {unverified && (
+              <span className="rounded-[10px] border border-line bg-white px-2.5 py-1.5 text-muted">Unverified</span>
+            )}
+            {!unverified || !fromOsm ? (
+              <span className="flex flex-wrap gap-x-2 rounded-[10px] bg-sun-soft px-2.5 py-1.5">
+                <OpenStatus {...b} />
+                <span className="font-normal"><Confirmed at={b.last_confirmed_at} /></span>
+              </span>
+            ) : null}
           </div>
+          {unverified && (
+            <p className="text-[13px] text-muted">
+              {fromOsm ? (
+                <>
+                  Details from{" "}
+                  <a href="https://www.openstreetmap.org/copyright" className="underline" target="_blank" rel="noopener">
+                    OpenStreetMap contributors
+                  </a>
+                  , not yet checked by FindAm. They may be out of date, so confirm before you go.
+                </>
+              ) : (
+                "FindAm hasn't checked this business yet. Confirm details before you go."
+              )}
+            </p>
+          )}
         </header>
 
         <div className="flex gap-2.5">
@@ -121,7 +148,9 @@ export default async function ListingPage({ params }: Props) {
           )}
         </div>
 
-        {(b.landmark_directions || b.market || b.comes_to_you) && (
+        {!b.claimed && <ClaimCard businessId={b.id} name={b.name} whatsappHref={claimHref} />}
+
+        {(b.landmark_directions || b.street_address || b.market || b.comes_to_you || b.lat != null) && (
           <section className="card flex flex-col gap-2.5 p-4" aria-labelledby="find">
             <div className="flex items-baseline justify-between gap-2">
               <h2 id="find" className="label-caps">{b.comes_to_you ? "Where they work" : "How to find us"}</h2>
@@ -133,6 +162,10 @@ export default async function ListingPage({ params }: Props) {
               </p>
             )}
             {b.landmark_directions && <p className="text-base leading-relaxed">{b.landmark_directions}</p>}
+            {b.street_address && <p className="text-[14px] text-muted">{b.street_address}</p>}
+            {!b.landmark_directions && !b.market && !b.comes_to_you && (
+              <p className="text-[14px] text-muted">No landmark directions yet. Use the map pin, or chat them for directions.</p>
+            )}
             {marketCells.length > 0 && (
               <dl className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
                 {marketCells.map((c) => (
@@ -222,7 +255,10 @@ export default async function ListingPage({ params }: Props) {
           {canReview && <ReviewForm businessId={b.id} slug={b.slug} />}
         </section>
 
-        <ReportForm businessId={b.id} />
+        <div className="flex flex-col gap-1">
+          <ReportForm businessId={b.id} />
+          <RemoveForm businessId={b.id} />
+        </div>
 
         <p className="pb-2 text-[12px] text-muted">
           Prices are a guide from the owner{b.price_min_ngn != null ? ` (from ${naira(b.price_min_ngn)})` : ""}. Always
