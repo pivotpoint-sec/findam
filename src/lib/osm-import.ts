@@ -10,8 +10,11 @@ import { normalisePhone, slugify } from "./format";
 
 export const OSM_SOURCE = "OpenStreetMap";
 
-/** Rough box around Lagos State: south, west, north, east. */
-export const LAGOS_BBOX = [6.38, 2.95, 6.72, 3.7] as const;
+/** Rough box around Lagos State (south, west, north, east), used only as a fallback. */
+export const LAGOS_BBOX = [6.36, 2.7, 6.72, 4.36] as const;
+
+/** OpenStreetMap's code for the Lagos State boundary. */
+export const LAGOS_ISO = "NG-LA";
 
 export type OsmElement = {
   type: "node" | "way" | "relation";
@@ -49,16 +52,21 @@ export function categoryFor(tags: Record<string, string>): string | null {
   return RULES.find((r) => r.test(tags))?.category ?? null;
 }
 
-/** The Overpass query that fetches everything RULES can map, inside Lagos. */
-export function overpassQuery(bbox: readonly number[] = LAGOS_BBOX): string {
-  const b = bbox.join(",");
+/**
+ * The Overpass query that fetches everything RULES can map inside Lagos State.
+ * By default it uses the state's official boundary, so nothing from Ogun State
+ * or the sea comes in. Pass a bounding box to search a rectangle instead.
+ */
+export function overpassQuery(opts: { bbox?: readonly number[] } = {}): string {
+  const where = opts.bbox ? `(${opts.bbox.join(",")})` : "(area.lagos)";
+  const head = opts.bbox ? "" : `area["ISO3166-2"="${LAGOS_ISO}"]["boundary"="administrative"]->.lagos;\n`;
   const filters = [
     '["shop"~"^(mobile_phone|computer|electronics_repair|electronics|caterer|hairdresser|beauty|cosmetics|car_repair|tyres|tailor)$"]',
     '["craft"~"^(mobile_phone_repair|electronics_repair|hvac|plumber|electrician|carpenter|joiner|painter|caterer|car_repair|tailor|dressmaker)$"]',
     '["amenity"~"^(restaurant|fast_food|food_court|car_repair)$"]',
   ];
-  const parts = filters.flatMap((f) => [`node${f}["name"](${b});`, `way${f}["name"](${b});`]);
-  return `[out:json][timeout:180];(\n${parts.join("\n")}\n);out center tags;`;
+  const parts = filters.flatMap((f) => [`node${f}["name"]${where};`, `way${f}["name"]${where};`]);
+  return `[out:json][timeout:300];\n${head}(\n${parts.join("\n")}\n);out center tags;`;
 }
 
 export type MappedListing = {
@@ -133,7 +141,10 @@ export async function importElements(
   elements: OsmElement[],
   opts: { dryRun?: boolean; maxAreaKm?: number } = {},
 ): Promise<ImportSummary> {
-  const maxAreaM = (opts.maxAreaKm ?? 8) * 1000;
+  // Every place inside Lagos goes to its nearest FindAm area. 25 km reaches
+  // the far ends of the state (east of Epe, west of Badagry) without pulling
+  // in anything that has wandered in from elsewhere.
+  const maxAreaM = (opts.maxAreaKm ?? 25) * 1000;
   const summary: ImportSummary = { seen: 0, created: 0, updated: 0, skipped: {} };
   const skip = (why: string) => (summary.skipped[why] = (summary.skipped[why] ?? 0) + 1);
 
@@ -160,11 +171,21 @@ export async function importElements(
       continue;
     }
 
+    const point = [m.lng, m.lat];
+
+    // Nearest FindAm area within reach. Looked up for every place, so a
+    // re-run also moves earlier imports into newly added areas.
+    const area = await db.query<{ id: number; slug: string }>(
+      `SELECT id, slug FROM areas
+       WHERE centre IS NOT NULL AND ST_DWithin(centre, ST_MakePoint($1, $2)::geography, $3)
+       ORDER BY ST_Distance(centre, ST_MakePoint($1, $2)::geography) LIMIT 1`,
+      [...point, maxAreaM],
+    );
+
     const existing = await db.query<{ id: string; status: string; owner_id: string | null; source: string }>(
       "SELECT id, status, owner_id, source FROM businesses WHERE source_name = $1 AND source_ref = $2",
       [OSM_SOURCE, m.ref],
     );
-    const point = [m.lng, m.lat];
 
     if (existing.rows[0]) {
       const row = existing.rows[0];
@@ -175,22 +196,17 @@ export async function importElements(
       if (!opts.dryRun) {
         await db.query(
           `UPDATE businesses SET name = $2, category_id = $3, location = ST_MakePoint($4, $5)::geography,
-             phone = $6, whatsapp = $7, street_address = $8, description = $9, hours_note = $10, imported_at = now()
+             phone = $6, whatsapp = $7, street_address = $8, description = $9, hours_note = $10, imported_at = now(),
+             area_id = coalesce($11, area_id)
            WHERE id = $1`,
-          [row.id, m.name, categoryId, ...point, m.phone, m.whatsapp, m.streetAddress, m.description, m.hoursNote],
+          [row.id, m.name, categoryId, ...point, m.phone, m.whatsapp, m.streetAddress, m.description, m.hoursNote,
+           area.rows[0]?.id ?? null],
         );
       }
       summary.updated++;
       continue;
     }
 
-    // Nearest FindAm area, if one is close enough to count as "in Lagos".
-    const area = await db.query<{ id: number; slug: string }>(
-      `SELECT id, slug FROM areas
-       WHERE centre IS NOT NULL AND ST_DWithin(centre, ST_MakePoint($1, $2)::geography, $3)
-       ORDER BY ST_Distance(centre, ST_MakePoint($1, $2)::geography) LIMIT 1`,
-      [...point, maxAreaM],
-    );
     if (!area.rows[0]) {
       skip("outside FindAm areas");
       continue;

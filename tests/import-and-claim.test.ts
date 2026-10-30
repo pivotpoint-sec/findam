@@ -48,32 +48,41 @@ describe("OpenStreetMap mapping", () => {
     expect(mapElement(elements[8])).toMatchObject({ phone: "+2348099990509" });
   });
 
-  it("builds an Overpass query for Lagos", () => {
+  it("builds an Overpass query for the Lagos State boundary, or a rectangle", () => {
     const q = overpassQuery();
     expect(q).toContain("[out:json]");
-    expect(q).toContain("(6.38,2.95,6.72,3.7)");
+    expect(q).toContain('area["ISO3166-2"="NG-LA"]["boundary"="administrative"]->.lagos;');
+    expect(q).toContain('node["shop"');
+    expect(q).toContain("(area.lagos);");
     expect(q).toContain("out center tags");
+    const box = overpassQuery({ bbox: [6.36, 2.7, 6.72, 4.36] });
+    expect(box).toContain("(6.36,2.7,6.72,4.36);");
+    expect(box).not.toContain("area.lagos");
   });
 });
 
 describe("importing", () => {
   it("dry run changes nothing", async () => {
     const s = await importElements(pool, elements, { dryRun: true });
-    expect(s.created).toBe(4);
+    expect(s.created).toBe(5);
     const n = await queryOne<{ n: number }>("SELECT count(*)::int AS n FROM businesses WHERE source_ref LIKE '%/90000000%'");
     expect(n?.n).toBe(0);
   });
 
   it("imports unverified listings and skips what it should", async () => {
     const s = await importElements(pool, elements);
-    expect(s).toMatchObject({ seen: 9, created: 4, updated: 0 });
-    expect(s.skipped).toMatchObject({
+    expect(s).toMatchObject({ seen: 9, created: 5, updated: 0 });
+    expect(s.skipped).toEqual({
       "no name": 1,
       "category not served": 1,
-      "outside FindAm areas": 1,
       "already on FindAm": 1, // Chidi Phone Clinic is already listed by an agent
       closed: 1,
     });
+    // The tailor in Epe now has an area of its own
+    const epe = await queryOne<{ area: string }>(
+      "SELECT a.slug AS area FROM businesses b JOIN areas a ON a.id = b.area_id WHERE b.source_ref = 'node/9000000006'",
+    );
+    expect(epe?.area).toBe("epe");
 
     const hub = await queryOne<{ status: string; verification_level: string; source: string; slug: string; area: string; owner_id: string | null }>(
       `SELECT b.status, b.verification_level, b.source, b.slug, a.slug AS area, b.owner_id
@@ -89,11 +98,23 @@ describe("importing", () => {
     expect(r.results.find((x) => x.name === "Test OSM Phone Hub")?.verification_level).toBe("none");
   });
 
-  it("is safe to run again", async () => {
+  it("is safe to run again, and moves unclaimed imports to their nearest area", async () => {
+    await query("UPDATE businesses SET area_id = (SELECT id FROM areas WHERE slug = 'epe') WHERE source_ref = 'node/9000000001'");
     const s = await importElements(pool, elements);
-    expect(s).toMatchObject({ created: 0, updated: 4 });
+    expect(s).toMatchObject({ created: 0, updated: 5 });
     const n = await queryOne<{ n: number }>("SELECT count(*)::int AS n FROM businesses WHERE source_ref LIKE '%/90000000%'");
-    expect(n?.n).toBe(4);
+    expect(n?.n).toBe(5);
+    const hub = await queryOne<{ area: string; slug: string }>(
+      "SELECT a.slug AS area, b.slug FROM businesses b JOIN areas a ON a.id = b.area_id WHERE b.source_ref = 'node/9000000001'",
+    );
+    // Area corrected, link unchanged
+    expect(hub).toEqual({ area: "ikeja", slug: "test-osm-phone-hub-ikeja" });
+  });
+
+  it("still skips places too far from any area", async () => {
+    const far: OsmElement = { type: "node", id: 9000000099, lat: 7.4, lon: 3.9, tags: { craft: "tailor", name: "Test OSM Ibadan Tailor" } };
+    const s = await importElements(pool, [far], { dryRun: true });
+    expect(s.skipped).toEqual({ "outside FindAm areas": 1 });
   });
 });
 

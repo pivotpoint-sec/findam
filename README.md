@@ -175,11 +175,21 @@ npm run import:osm -- --save osm.json    # also keep the raw download
 npm run import:osm -- --file osm.json    # re-import from a saved download
 ```
 
-Run it from your own computer or server: it downloads from the public
-Overpass API (`OVERPASS_URL` to use another server). Running it again
-refreshes unclaimed imported listings and adds new ones; it never touches
-listings an owner has claimed or asked to remove, and skips businesses
-FindAm already has (same name within 150 m). Tag-to-category rules are in
+Run it from your own computer or server. It downloads everything inside the
+**Lagos State boundary** (OpenStreetMap's `NG-LA`) from the public Overpass
+API. Those free servers are often busy, so it tries three of them, three
+rounds each, waiting longer between rounds; set `OVERPASS_URL` to use only one.
+`--bbox` searches a rectangle round Lagos instead of the boundary.
+
+Each business goes to its nearest FindAm area (up to 25 km, which reaches the
+far ends of the state). `db/seed/base.sql` has 44 areas covering all 20 local
+government areas, from Badagry to Epe; after adding areas, run
+`npm run db:seed:base` and re-run the import to move existing imports into them.
+
+Running it again refreshes unclaimed imported listings (including their
+area) and adds new ones; it never touches listings an owner has claimed or
+asked to remove, and skips businesses FindAm already has (same name within
+150 m). Listing links stay the same. Tag-to-category rules are in
 `src/lib/osm-import.ts`.
 
 **Licence.** OpenStreetMap data is © OpenStreetMap contributors under the Open

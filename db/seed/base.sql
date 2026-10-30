@@ -31,6 +31,40 @@ FROM cities c, (VALUES
 WHERE c.slug = 'lagos'
 ON CONFLICT (city_id, slug) DO NOTHING;
 
+-- More areas so every part of Lagos State has one nearby, from Badagry in the
+-- west to Epe in the east. Centre points are approximate. Safe to re-run:
+-- existing areas are left as they are.
+INSERT INTO areas (city_id, name, slug, aliases, centre)
+SELECT c.id, v.name, v.slug, v.aliases, ST_MakePoint(v.lng, v.lat)::geography
+FROM cities c, (VALUES
+  ('Badagry',          'badagry',          ARRAY['Badagry Town','Topo','Ajara','Seme'],                 6.4153, 2.8813),
+  ('Ijanikin',         'ijanikin',         ARRAY['Morogbo','Agbara','Iyana Isashi','Lagos Badagry Expressway'], 6.4780, 3.1050),
+  ('Satellite Town',   'satellite-town',   ARRAY['Abule Ado','Agboju','Amuwo','Alakija'],               6.4500, 3.2600),
+  ('Ijora',            'ijora',            ARRAY['Iganmu','Orile','Costain','Ijora Badia'],             6.4720, 3.3620),
+  ('Ebute Metta',      'ebute-metta',      ARRAY['Oyingbo','Otto','Iddo','Ebute-Metta'],                6.4900, 3.3800),
+  ('Isolo',            'isolo',            ARRAY['Okota','Ago Palace','Ajao Estate','Ago'],             6.5250, 3.3150),
+  ('Ejigbo',           'ejigbo',           ARRAY['Ikotun Road','Isheri Olofin','Jakande Ejigbo'],       6.5520, 3.2980),
+  ('Ilupeju',          'ilupeju',          ARRAY['Palmgrove','Onipanu','Anthony Village'],              6.5530, 3.3570),
+  ('Shomolu',          'shomolu',          ARRAY['Bariga','Somolu','Pedro','Fadeyi','Onipan'],          6.5400, 3.3830),
+  ('Ketu',             'ketu',             ARRAY['Mile 12','Alapere','Ikosi','Agboyi'],                 6.5980, 3.3930),
+  ('Ojota',            'ojota',            ARRAY['Ogudu','Kosofe','Owode Onirin'],                      6.5870, 3.3800),
+  ('Ojodu',            'ojodu',            ARRAY['Berger','Omole','Ojodu Berger','Akiode'],             6.6400, 3.3620),
+  ('Ifako',            'ifako',            ARRAY['Ijaiye','Iju','Agbado','Fagba','Ifako-Ijaiye'],       6.6450, 3.3150),
+  ('Ipaja',            'ipaja',            ARRAY['Iyana Ipaja','Ayobo','Alimosho','Baruwa','Abesan'],  6.6130, 3.2650),
+  ('Igando',           'igando',           ARRAY['Iba','LASU Road','Ijegun','Akesan'],                  6.5550, 3.2450),
+  ('Okokomaiko',       'okokomaiko',       ARRAY['Iba Junction','Ojo Barracks','LASU Ojo','Ijanikin Road'], 6.4750, 3.1600),
+  ('Ikota',            'ikota',            ARRAY['VGC','Victoria Garden City','Mega Chicken','Lekki Phase 2'], 6.4550, 3.5250),
+  ('Osapa',            'osapa',            ARRAY['Osapa London','Agungi','Igbo Efon','Jakande','Chevron','Ikate','Lekki County'], 6.4400, 3.5000),
+  ('Sangotedo',        'sangotedo',        ARRAY['Abraham Adesanya Estate','Thomas Estate','Badore','Ogombo'], 6.4720, 3.6200),
+  ('Awoyaya',          'awoyaya',          ARRAY['Lakowe','Abijo','Bogije','Mayfair','Ibeju-Lekki'],    6.4700, 3.7000),
+  ('Ibeju',            'ibeju',            ARRAY['Eleko','Akodo','Lekki Free Trade Zone','Dangote Refinery','Ibeju Lekki'], 6.4500, 3.9000),
+  ('Epe',              'epe',              ARRAY['Epe Town','Noforija','Ejinrin','Poka'],               6.5841, 3.9834),
+  ('Ijede',            'ijede',            ARRAY['Igbogbo','Bayeku','Ibeshe','Imota'],                  6.5650, 3.5850),
+  ('Ogolonto',         'ogolonto',         ARRAY['Odonguyan','Majidun','Isawo','Ikorodu Road North'], 6.6500, 3.4900)
+) AS v(name, slug, aliases, lat, lng)
+WHERE c.slug = 'lagos'
+ON CONFLICT (city_id, slug) DO NOTHING;
+
 -- Categories: parent groups, then children. Synonyms include Pidgin and the
 -- words people actually type.
 INSERT INTO categories (name, slug, synonyms, sort_order) VALUES
